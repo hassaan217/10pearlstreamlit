@@ -569,20 +569,63 @@ def train_models():
     feature_cols = ['temperature', 'humidity', 'wind_speed', 'pm25', 'pm10', 
                     'no2', 'so2', 'o3', 'co']
     
-    available_features = [col for col in feature_cols if col in df.columns]
+    # Create a clean copy of the dataframe
+    df_clean = df.copy()
     
-    X = df[available_features].copy()
-    y = df['aqi'].copy()
+    # Replace infinities with NaNs
+    df_clean.replace([np.inf, -np.inf], np.nan, inplace=True)
     
-    # Handle missing values
-    X = X.fillna(X.median())
+    # CRITICAL FIX: Drop rows where the target variable (AQI) is NaN
+    # This prevents the XGBoostError: "Label contains NaN"
+    if 'aqi' in df_clean.columns:
+        initial_count = len(df_clean)
+        df_clean.dropna(subset=['aqi'], inplace=True)
+        dropped_count = initial_count - len(df_clean)
+        if dropped_count > 0:
+            # Optional: log this, but we won't block on it
+            pass
+    else:
+        st.error("AQI column missing from dataset.")
+        return {}, '', -1
+
+    # Identify available features
+    available_features = [col for col in feature_cols if col in df_clean.columns]
     
-    # Add engineered features
-    if 'time' in df.columns:
-        df['time'] = pd.to_datetime(df['time'])
-        X['hour'] = df['time'].dt.hour
-        X['month'] = df['time'].dt.month
-        X['day_of_week'] = df['time'].dt.dayofweek
+    # Fill missing values in features with median (safe fallback)
+    for col in available_features:
+        median_val = df_clean[col].median()
+        if pd.isna(median_val):
+            median_val = 0 # Fallback if all values are NaN
+        df_clean[col].fillna(median_val, inplace=True)
+
+    # Prepare X and y
+    X = df_clean[available_features].copy()
+    y = df_clean['aqi'].copy()
+
+    # Ensure we have data
+    if len(X) == 0:
+        st.warning("No valid data found after cleaning. Using synthetic data.")
+        df = generate_synthetic_training_data(2000)
+        df_clean = df.copy()
+        df_clean.replace([np.inf, -np.inf], np.nan, inplace=True)
+        available_features = [col for col in feature_cols if col in df_clean.columns]
+        X = df_clean[available_features].copy()
+        y = df_clean['aqi'].copy()
+        # If synthetic data generation also has time, ensure we handle it
+        if 'time' not in df_clean.columns and 'time' in df.columns:
+             df_clean['time'] = df['time']
+
+    # Add engineered features based on the CLEANED dataframe
+    if 'time' in df_clean.columns:
+        df_clean['time'] = pd.to_datetime(df_clean['time'])
+        X['hour'] = df_clean['time'].dt.hour
+        X['month'] = df_clean['time'].dt.month
+        X['day_of_week'] = df_clean['time'].dt.dayofweek
+    else:
+        # If no time column, create dummy features to avoid crash in models that expect specific dimensions
+        X['hour'] = 12
+        X['month'] = 6
+        X['day_of_week'] = 0
     
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
