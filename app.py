@@ -127,6 +127,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         gap: 4px;
+        z-index: 10;
     }
     
     /* Custom scrollbar */
@@ -1280,9 +1281,11 @@ if st.session_state.forecast_data:
             day_name = "Today" if idx == 0 else "Tomorrow" if idx == 1 else day['date'].strftime('%A')
             category, color, icon, _ = get_aqi_category(day['avg_aqi'])
             
+            # Pre-calculate styles to avoid parsing issues
+            border_style = f"border: 2px solid {'#667eea' if idx == st.session_state.selected_day else '#333'}"
+            
             st.markdown(f"""
-            <div style="background: #1e1e1e; border: 2px solid {'#667eea' if idx == st.session_state.selected_day else '#333'}; 
-                       border-radius: 12px; padding: 1rem; cursor: pointer;"
+            <div style="background: #1e1e1e; {border_style}; border-radius: 12px; padding: 1rem; cursor: pointer;"
                  onclick="window.location.href='?day={idx}'">
                 <div style="display: flex; justify-content: space-between; align-items: start;">
                     <span style="font-weight: bold; color: white;">{day_name}</span>
@@ -1339,38 +1342,52 @@ if st.session_state.model_metrics:
             is_selected = st.session_state.selected_model_id == model_name
             is_best = max(st.session_state.model_metrics.items(), key=lambda x: x[1]['accuracy'])[0] == model_name
             
-            # Determine best badge
-            best_badge = ""
+            # Determine best badge HTML
             if is_best and not is_selected:
                 best_badge = '<div class="best-badge"><span>🏆 Best</span></div>'
+            else:
+                best_badge = ""
             
-            st.markdown(f"""
-            <div class="model-card {'selected' if is_selected else ''}" style="position: relative;">
+            # Pre-calculate styles and values to prevent raw text rendering
+            card_class = "model-card selected" if is_selected else "model-card"
+            bg_color = metrics['color']
+            acc_val = f"{metrics['accuracy']:.1f}%"
+            acc_width = f"{metrics['accuracy']}%"
+            prec_val = f"{metrics['precision']:.1f}%"
+            rec_val = f"{metrics['recall']:.1f}%"
+            f1_val = f"{metrics['f1']:.1f}%"
+            rmse_val = f"{metrics['rmse']:.1f}"
+            type_val = metrics.get('type', 'Ensemble')
+            
+            html_card = f"""
+            <div class="{card_class}" style="position: relative;">
                 {best_badge}
                 <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <div style="width: 12px; height: 12px; border-radius: 50%; background: {metrics['color']};"></div>
+                    <div style="width: 12px; height: 12px; border-radius: 50%; background: {bg_color};"></div>
                     <span style="font-weight: bold; color: white;">{model_name}</span>
                     <span style="background: #333; padding: 2px 6px; border-radius: 12px; font-size: 0.6rem; color: #9ca3af; margin-left: auto;">
-                        {metrics.get('type', 'Ensemble')}
+                        {type_val}
                     </span>
                 </div>
                 <div style="margin-bottom: 0.5rem;">
                     <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
                         <span style="color: #9ca3af;">Accuracy</span>
-                        <span style="color: white;">{metrics['accuracy']:.1f}%</span>
+                        <span style="color: white;">{acc_val}</span>
                     </div>
                     <div style="width: 100%; background: #333; height: 6px; border-radius: 3px;">
-                        <div style="width: {metrics['accuracy']}%; background: {metrics['color']}; height: 6px; border-radius: 3px;"></div>
+                        <div style="width: {acc_width}; background: {bg_color}; height: 6px; border-radius: 3px;"></div>
                     </div>
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.7rem;">
-                    <div><span style="color: #9ca3af;">Precision:</span> <span style="color: white;">{metrics['precision']:.1f}%</span></div>
-                    <div><span style="color: #9ca3af;">Recall:</span> <span style="color: white;">{metrics['recall']:.1f}%</span></div>
-                    <div><span style="color: #9ca3af;">F1:</span> <span style="color: white;">{metrics['f1']:.1f}%</span></div>
-                    <div><span style="color: #9ca3af;">RMSE:</span> <span style="color: white;">{metrics['rmse']:.1f}</span></div>
+                    <div><span style="color: #9ca3af;">Precision:</span> <span style="color: white;">{prec_val}</span></div>
+                    <div><span style="color: #9ca3af;">Recall:</span> <span style="color: white;">{rec_val}</span></div>
+                    <div><span style="color: #9ca3af;">F1:</span> <span style="color: white;">{f1_val}</span></div>
+                    <div><span style="color: #9ca3af;">RMSE:</span> <span style="color: white;">{rmse_val}</span></div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            
+            st.markdown(html_card, unsafe_allow_html=True)
             
             # Handle model selection
             col1, col2, col3 = st.columns([1, 2, 1])
